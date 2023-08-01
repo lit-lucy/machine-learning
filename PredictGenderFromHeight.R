@@ -8,10 +8,10 @@ y <- heights$sex
 x <- heights$height
 
 # training set - used to develop algorithm
-# test set - pretend we don't know outcome
+# test set - pretend we don't know the outcome
 # createDataPartition from caret - randomly generate indices to split the dataset
 set.seed(2007)
-# times - how many random samples of indices, p - proportion of the data represented by indeces 
+# times - how many random samples of indices, p - proportion of the data represented by indices 
 test_index <- createDataPartition(y, times = 1, p = 0.5, list = FALSE)
 
 test_set <- heights[test_index, ]
@@ -26,41 +26,47 @@ mean(y_hat == test_set$sex)
 # Checking data averages
 heights %>% group_by(sex) %>% summarize(mean(height), sd(height))
 
-# Predict Male if heigh is within 2 SD from the avg male height
+# Second algorithm - predict Male if height is within 2 SD from the avg male height
 y_hat <- ifelse(x > 62, "Male", "Female") %>%
   factor(levels = levels(test_set$sex))
 # Overall accuracy
 mean(y_hat == y)
 
-# Optimize the cutoff using only the training set
+# Data analysis that leads to conclusion of using harmonic average (F1-score) 
+# which is harmonic average of precision and recall
+# Tabulate predicted vs. real data
+table(predicted = y_hat, actual = test_set$sex)
+test_set %>%
+  mutate(y_hat = y_hat) %>%
+  group_by(sex) %>%
+  summarize(accuracy = mean(y_hat == sex))
+
+# Prevalence. The proportion of females in dataset is just 20%
+prev <- mean(y == "Female")
+prev
+
+# Confusion Matrix metrics
+cm <- confusionMatrix(data = y_hat, reference = test_set$sex)
+cm$overall["Accuracy"]
+cm$byClass[c("Sensitivity", "Specificity", "Prevalence")]
+
+# Thirds algorithm - same as the second but maximizing F_1 score instead of overall accuracy
 cutoff <- seq(61, 70)
-accuracy <- map_dbl(cutoff, function(x){
+F_1 <- map_dbl(cutoff, function(x){
   y_hat <- ifelse(train_set$height > x, "Male", "Female") %>%
     factor(levels = levels(test_set$sex))
-  mean(y_hat == train_set$sex)
+  F_meas(data = y_hat, reference = factor(train_set$sex))
 })
-
-# Plot accuracy for cutoffs
-data.frame(cutoff, accuracy) %>%
-  ggplot(aes(cutoff, accuracy)) +
+# Plot F_1 measure against the cutoff
+data.frame(cutoff, F_1) %>%
+  ggplot(aes(cutoff, F_1)) +
   geom_point() +
   geom_line()
 
-# Select cutoff with the best accuracy
-max(accuracy)
-best_cutoff <- cutoff[which.max(accuracy)]
+best_cutoff <- cutoff[which.max(F_1)]
 best_cutoff
 
-# Test cutoff on the test set
 y_hat <- ifelse(test_set$height > best_cutoff, "Male", "Female") %>%
   factor(levels = levels(test_set$sex))
-y_hat <- factor(y_hat)
-mean(y_hat == test_set$sex)
-
-
-
-
-
-
-
-
+sensitivity(data = y_hat, reference = test_set$sex)
+specificity(data = y_hat, reference = test_set$sex)
